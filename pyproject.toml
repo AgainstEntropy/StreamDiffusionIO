@@ -10,7 +10,7 @@ authors = [
 ]
 description = "A lightweight pipeline using StreamDiffusion, aimming to support streaming IO operations."
 readme = "README.md"
-keywords = ["diffusion", "stream"]
+keywords = ["DeepLearning", "StableDiffusion", "diffusion", "stream", "PyTorch"]
 license = {file = "LICENSE"}
 classifiers = [
     "Development Status :: 3 - Alpha",
