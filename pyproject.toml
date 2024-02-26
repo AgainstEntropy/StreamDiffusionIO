@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "StreamDiffusionIO"
+version = "0.0.1a"
+authors = [
+    {name = "Yihao (Ethan) Wang", email = "yihao.w@nyu.edu"},
+]
+description = "A lightweight pipeline using StreamDiffusion, aimming to support streaming IO operations."
+readme = "README.md"
+keywords = ["diffusion", "stream"]
+license = {file = "LICENSE"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "torch >= 2.2.0",
+    "diffusers >= 0.26.3",
+    "transformers >= 4.38.1",
+]
+
+[project.optional-dependencies]
+xformers = ["xformers >= 0.0.24"]
+
+[project.urls]
+Repository = "https://github.com/AgainstEntropy/StreamDiffusionIO.git"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["StreamDiffusionIO*"]
+namespaces = false
