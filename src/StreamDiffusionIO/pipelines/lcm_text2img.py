@@ -40,13 +40,8 @@ class LatentConsistencyModelStreamIO:
             use_xformers,
         )
 
-        self._prepare(
-            num_inference_steps,
-            seed,
-        )
-
-        self._elapsed_steps = 0
-        self._output_queue = SimpleQueue()
+        self._prepare(num_inference_steps, seed)
+        self.reset()
 
     def _load_models(
         self,
@@ -58,10 +53,9 @@ class LatentConsistencyModelStreamIO:
 
         pipe: StableDiffusionPipeline = StableDiffusionPipeline.from_pretrained(
             model_id_or_path,
-            dtype=self.dtype,
             safety_checker=None,
             requires_safety_checker=False,
-        ).to(self.device)
+        ).to(dtype=self.dtype, device=self.device)
 
         if use_xformers and torch.cuda.is_available():
             pipe.enable_xformers_memory_efficient_attention()
@@ -74,6 +68,7 @@ class LatentConsistencyModelStreamIO:
 
         pipe.load_lora_weights(lcm_lora_path)
         pipe.fuse_lora()
+        print(f"Fused LCM-LoRA: {lcm_lora_path}")
 
         self.unet: UNet2DConditionModel = pipe.unet
         self.vae: AutoencoderKL = pipe.vae
@@ -85,6 +80,12 @@ class LatentConsistencyModelStreamIO:
         self.vae_scale_factor = pipe.vae_scale_factor
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
+    def reset(self):
+        self._elapsed_steps = 0
+        self._output_queue = SimpleQueue()
+        self._remaining_steps = 0
+
+    @torch.no_grad()
     def _prepare(
         self,
         num_inference_steps: int,
@@ -95,21 +96,20 @@ class LatentConsistencyModelStreamIO:
         self.timesteps, self.num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, self.device
         )
-        self.batch_size = self.num_inference_steps
 
-        self.latent_shape = (self.unet.config.in_channels,) + (
+        self._latent_shape = (self.unet.config.in_channels,) + (
             self.resolution // self.vae_scale_factor,
         ) * 2
-        self.init_noise = self._prepare_latent(self.num_inference_steps)
+        self._init_noise = self._prepare_latent(self.num_inference_steps)
         self.prev_latent_buffer = self._prepare_latent(self.num_inference_steps - 1)
 
-        prompt_embeds_shape = (
+        self._prompt_embeds_shape = (
             self.num_inference_steps,
             self.tokenizer.model_max_length,
             self.text_encoder.config.hidden_size,
         )
         self.prompt_embeds_batch = torch.zeros(
-            prompt_embeds_shape, dtype=self.dtype, device=self.device
+            self._prompt_embeds_shape, dtype=self.dtype, device=self.device
         )
 
         c_skip_out_list = torch.tensor(
@@ -134,30 +134,40 @@ class LatentConsistencyModelStreamIO:
 
     def _prepare_latent(self, batch_size: int = 1):
         return torch.randn(
-            (batch_size,) + self.latent_shape,
+            (batch_size,) + self._latent_shape,
             generator=self.generator,
             dtype=self.dtype,
             device=self.device,
+            requires_grad=False,
         )
 
     def _encoder_new_prompt(self, new_prompt: str):
-        text_inputs = self.tokenizer(
-            new_prompt,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            truncation=True,
-            return_tensors="pt",
-        )
-        text_input_ids = text_inputs.input_ids
-        new_prompt_embeds = self.text_encoder(
-            text_input_ids.to(self.text_encoder.device)
-        ).last_hidden_state
+        if new_prompt is not None:
+            self._remaining_steps = self.num_inference_steps
+
+            text_inputs = self.tokenizer(
+                new_prompt,
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+            text_input_ids = text_inputs.input_ids
+            new_prompt_embeds = self.text_encoder(
+                text_input_ids.to(self.text_encoder.device)
+            ).last_hidden_state
+
+        else:
+            new_prompt_embeds = torch.zeros(
+                (1, ) + self._prompt_embeds_shape[1:], 
+                dtype=self.dtype, device=self.device
+            )
 
         self.prompt_embeds_batch = torch.cat(
             [new_prompt_embeds, self.prompt_embeds_batch[:-1]], dim=0
         )
 
-    def unet_step_batch(
+    def _unet_step_batch(
         self,
         latents_batch: torch.Tensor,
     ) -> torch.Tensor:
@@ -171,7 +181,7 @@ class LatentConsistencyModelStreamIO:
 
         return model_pred
 
-    def scheduler_step_batch(
+    def _scheduler_step_batch(
         self,
         model_pred_batch: torch.Tensor,
         sample_batch: torch.Tensor,
@@ -187,16 +197,16 @@ class LatentConsistencyModelStreamIO:
         prev_sample_batch = denoised_batch[:-1]
         self.prev_latent_buffer = (
             self.alpha_prod_t_sqrt_list[1:] * prev_sample_batch
-            + self.beta_prod_t_sqrt_list[1:] * self.init_noise[1:]
+            + self.beta_prod_t_sqrt_list[1:] * self._init_noise[1:]
         )
 
         return denoised_batch[-1:]
 
-    def step_batch(self) -> torch.Tensor:
+    def _step_batch(self) -> torch.Tensor:
         latent = self._prepare_latent()
         latents_batch = torch.cat((latent, self.prev_latent_buffer), dim=0)
-        model_pred_batch = self.unet_step_batch(latents_batch)
-        denoised_x0 = self.scheduler_step_batch(model_pred_batch, latents_batch)
+        model_pred_batch = self._unet_step_batch(latents_batch)
+        denoised_x0 = self._scheduler_step_batch(model_pred_batch, latents_batch)
 
         image = self.vae.decode(
             denoised_x0 / self.vae.config.scaling_factor, return_dict=False
@@ -207,10 +217,11 @@ class LatentConsistencyModelStreamIO:
         )[0]
 
         self._elapsed_steps += 1
+        self._remaining_steps -= 1
         if self._elapsed_steps >= self.num_inference_steps:
             self._output_queue.put(image)
 
-    def get_image(self):
+    def _get_image(self):
         image = None
         try:
             image = self._output_queue.get_nowait()
@@ -218,10 +229,14 @@ class LatentConsistencyModelStreamIO:
             print("No image available yet. Returning None.")
 
         return image
+    
+    def stop(self):
+        return (self._remaining_steps <= 0)
 
-    def __call__(self, prompt: str):
+    @torch.no_grad()
+    def __call__(self, prompt: Optional[str]):
 
         self._encoder_new_prompt(prompt)
-        self.step_batch()
+        self._step_batch()
 
-        return self.get_image()
+        return self._get_image()
