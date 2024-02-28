@@ -26,12 +26,15 @@ class LatentConsistencyModelStreamIO:
         use_xformers: bool = False,
         seed: int = 0,
         output_type: Literal["pt", "pil"] = "pil",
+        verbose: bool = False,
     ):
         self.device = device
         self.dtype = dtype
         self.resolution = resolution
         self.guidance_scale = guidance_scale
         self.output_type = output_type
+        self.seed = seed
+        self.verbose = verbose
 
         self._load_models(
             model_id_or_path,
@@ -40,8 +43,8 @@ class LatentConsistencyModelStreamIO:
             use_xformers,
         )
 
-        self._prepare(num_inference_steps, seed)
-        self.reset()
+        self.reset(seed)
+        self._prepare(num_inference_steps)
 
     def _load_models(
         self,
@@ -80,7 +83,10 @@ class LatentConsistencyModelStreamIO:
         self.vae_scale_factor = pipe.vae_scale_factor
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-    def reset(self):
+    def reset(self, seed: Optional[int] = None):
+        if seed is not None:
+            self.seed = seed
+        self.generator = torch.Generator(self.device).manual_seed(self.seed)
         self._elapsed_steps = 0
         self._output_queue = SimpleQueue()
         self._remaining_steps = 0
@@ -89,9 +95,7 @@ class LatentConsistencyModelStreamIO:
     def _prepare(
         self,
         num_inference_steps: int,
-        seed: int,
     ):
-        self.generator = torch.Generator(self.device).manual_seed(seed)
 
         self.timesteps, self.num_inference_steps = retrieve_timesteps(
             self.scheduler, num_inference_steps, self.device
@@ -226,7 +230,8 @@ class LatentConsistencyModelStreamIO:
         try:
             image = self._output_queue.get_nowait()
         except Empty:
-            print("No image available yet. Returning None.")
+            if self.verbose:
+                print("No image available yet. Returning None.")
 
         return image
     
