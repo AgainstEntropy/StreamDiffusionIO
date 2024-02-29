@@ -88,7 +88,8 @@ class LatentConsistencyModelStreamIO:
             self.seed = seed
         self.generator = torch.Generator(self.device).manual_seed(self.seed)
         self._elapsed_steps = 0
-        self._output_queue = SimpleQueue()
+        self._output_image_queue = SimpleQueue()
+        self._prompt_queue = SimpleQueue()
         self._remaining_steps = 0
 
     @torch.no_grad()
@@ -147,6 +148,7 @@ class LatentConsistencyModelStreamIO:
 
     def _encoder_new_prompt(self, new_prompt: str):
         if new_prompt is not None:
+            self._prompt_queue.put(new_prompt)
             self._remaining_steps = self.num_inference_steps
 
             text_inputs = self.tokenizer(
@@ -223,17 +225,16 @@ class LatentConsistencyModelStreamIO:
         self._elapsed_steps += 1
         self._remaining_steps -= 1
         if self._elapsed_steps >= self.num_inference_steps:
-            self._output_queue.put(image)
+            self._output_image_queue.put(image)
 
-    def _get_image(self):
-        image = None
+    def _get_image_and_prompt(self):
         try:
-            image = self._output_queue.get_nowait()
+            image = self._output_image_queue.get_nowait()
+            return image, self._prompt_queue.get_nowait()
         except Empty:
             if self.verbose:
                 print("No image available yet. Returning None.")
-
-        return image
+            return None, None
     
     def stop(self):
         return (self._remaining_steps <= 0)
@@ -244,4 +245,4 @@ class LatentConsistencyModelStreamIO:
         self._encoder_new_prompt(prompt)
         self._step_batch()
 
-        return self._get_image()
+        return self._get_image_and_prompt()
