@@ -1,8 +1,15 @@
 # StreamDiiffusionIO
 
-StreamDiiffusionIO's pipeline design is based on [StreamDiffusion](https://github.com/cumulo-autumn/StreamDiffusion), but especially allows using different text prompt on different samples in the denoising batch. 
+StreamDiiffusionIO's pipeline design is based on [StreamDiffusion](https://github.com/cumulo-autumn/StreamDiffusion), but especially allows using different text prompt on different samples in the denoising batch respectively but consistently.
 
-A natural application of StreamDiiffusionIO is to render text streams into image streams, as in [kanji](https://github.com/AgainstEntropy/kanji).
+
+A natural application of StreamDiiffusionIO is to render text streams into image streams, as in [Streaming Kanji](https://github.com/AgainstEntropy/kanji).
+
+## Features
+
+- [ ] Streaming with LDM
+- [x] Streaming with LCM
+
 
 ## Installation
 
@@ -18,22 +25,21 @@ conda activate StreamDiffusionIO
 #### For Users
 
 ```shell
-pip install -i https://test.pypi.org/simple/ StreamDiffusionIO
+ppip install StreamDiffusionIO
 ```
 
 #### For Developers
 
 ```shell
 git clone https://github.com/AgainstEntropy/StreamDiffusionIO.git
-cd StreamDiffusionIO
-pip install --editable .
+pip install --editable ./StreamDiffusionIO/
 ```
 
 ### (Optional) Accelaration with `xformers`
 
 ```shell
 # For user
-pip install -i https://test.pypi.org/simple/ StreamDiffusionIO[xformers]
+pip install StreamDiffusionIO[xformers]
 
 # For dev
 pip install -e '.[xformers]'
@@ -49,7 +55,7 @@ from StreamDiffusionIO import LatentConsistencyModelStreamIO
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-model_id_or_path = "runwayml/stable-diffusion-v1-5"
+model_id_or_path = "/path/to/stable-diffusion-v1-5"
 lora_path = "/path/to/lora/pytorch_lora_weights.safetensors"
 lcm_lora_path = "/path/to/lcm-lora/pytorch_lora_weights.safetensors"
 
@@ -66,11 +72,21 @@ prompt_list = text.split()
 
 # to simulate a text stream
 for prompt in prompt_list:
-    image = stream(prompt)  # stream returns None during warmup
+    image, text = stream(prompt)  # stream returns None during warmup
     if image is not None:
+        print(text)
         display(image)
+
+# Continue to display the remaining images in the stream 
+while True:
+    image, text = stream(prompt)
+    print(text)
+    display(image)
+    if stream.stop():
+        break
 ```
 
+Note the `text` returnded from the `stream` is the corresponding text prompt used to generating the returned `image`.
 Please follow the Jupyter notebooks in [examples](./examples/) to see details.
 
 
