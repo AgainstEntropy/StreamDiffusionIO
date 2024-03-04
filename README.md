@@ -94,3 +94,4 @@ Please follow the Jupyter notebooks in [examples](./examples/) to see details.
 
 - [StreamDiffusion](https://github.com/cumulo-autumn/StreamDiffusion)
 - [Latent Consistency Models](https://github.com/huggingface/diffusers/tree/main/examples/consistency_distillation)
+- [Latent Diffision Models](https://github.com/CompVis/latent-diffusion/tree/main)
