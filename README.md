@@ -1,9 +1,9 @@
-# StreamDiiffusionIO
+# StreamDiffusionIO
 
-StreamDiiffusionIO's pipeline design is based on [StreamDiffusion](https://github.com/cumulo-autumn/StreamDiffusion), but especially allows using different text prompt on different samples in the denoising batch respectively but consistently.
+StreamDiffusionIO's pipeline design is based on [StreamDiffusion](https://github.com/cumulo-autumn/StreamDiffusion), but especially allows using different text prompt on different samples in the denoising batch respectively but consistently.
 
 
-A natural application of StreamDiiffusionIO is to render text streams into image streams, as in [Streaming Kanji](https://github.com/AgainstEntropy/kanji).
+A natural application of StreamDiffusionIO is to render text streams into image streams, as in [Streaming Kanji](https://github.com/AgainstEntropy/kanji).
 
 ## Features
 
