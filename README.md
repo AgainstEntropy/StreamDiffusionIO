@@ -45,6 +45,12 @@ pip install StreamDiffusionIO[xformers]
 pip install -e '.[xformers]'
 ```
 
+Or install `xformers` manually:
+
+```shell
+pip install xformers --index-url https://download.pytorch.org/whl/cu124
+```
+
 ## Quick Start
 
 StreamDiffusionIO is very similar to StreamDiffusion, but even more lightweight. One can use the pipeline with only a few lines of codes.
